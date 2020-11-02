@@ -67,7 +67,6 @@ services:
       - ${WORKSPACE}:/tmp/test
     command: bash -c "mvn clean test -Dtest=SummarizerTest && cp -r target /tmp/test"
 
-
     networks: 
       - cat-net
     logging:

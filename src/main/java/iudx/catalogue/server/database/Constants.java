@@ -124,7 +124,7 @@ public class Constants {
   public static final String TEXT_QUERY =
       "{\"query_string\":{\"query\":\"$1\"}}";
 
-  public static final String TERM_COMPLEX_QUERY =
+  public static final String GET_DOC_QUERY =
       "{\"_source\":[$2],\"query\":{\"term\":{\"id.keyword\":\"$1\"}}}";
 
   public static final String INSTANCE_FILTER = "{\"match\":" + "{\"instance\": \"" + "$1" + "\"}}";
@@ -134,5 +134,9 @@ public class Constants {
   public static final String FILTER_QUERY = "{\"bool\":{\"filter\":[$1]}}";
   public static final String MATCH_QUERY = "{\"match\":{\"$1\":\"$2\"}}";
   public static final String TERM_QUERY = "{\"term\":{\"$1\":\"$2\"}}";
+
+  public static final String QUERY_RESOURCE_GRP =
+      "{ \"query\": { \"bool\": { \"should\": [ { \"term\": { \"id.keyword\": \"$1\" } }, "
+          + "{ \"term\": { \"resourceGroup.keyword\": \"$2\" } } ] } } }";
 
 }

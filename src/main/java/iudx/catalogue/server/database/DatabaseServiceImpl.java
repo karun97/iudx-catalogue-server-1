@@ -3,16 +3,15 @@ package iudx.catalogue.server.database;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-
-import static iudx.catalogue.server.database.Constants.*;
 import static iudx.catalogue.server.Constants.*;
+import static iudx.catalogue.server.database.Constants.*;
+
 
 
 /**
@@ -143,7 +142,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     String errorJson = respBuilder.withStatus(FAILED).withResult(id, INSERT, FAILED).getResponse();
 
-    String checkItem = TERM_COMPLEX_QUERY.replace("$1", id).replace("$2", "");
+    String checkItem = GET_DOC_QUERY.replace("$1", id).replace("$2", "");
 
     verifyInstance(instanceId).onComplete(instanceHandler -> {
       if (instanceHandler.succeeded()) {
@@ -197,7 +196,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     RespBuilder respBuilder = new RespBuilder();
     String id = doc.getString("id");
-    String checkQuery = TERM_COMPLEX_QUERY.replace("$1", id).replace("$2", "\"" + id + "\"");
+    String checkQuery = GET_DOC_QUERY.replace("$1", id).replace("$2", "\"" + id + "\"");
 
     String errorJson = respBuilder.withStatus(ERROR)
                                   .withResult(id, UPDATE, FAILED)
@@ -241,15 +240,25 @@ public class DatabaseServiceImpl implements DatabaseService {
   @Override
   public DatabaseService deleteItem(JsonObject request, Handler<AsyncResult<JsonObject>> handler) {
 
-    LOGGER.debug("Info: Updating item");
+    LOGGER.debug("Info: Deleting item");
 
     RespBuilder respBuilder = new RespBuilder();
     String id = request.getString("id");
     String errorJson = respBuilder.withStatus(FAILED)
                                   .withResult(id, DELETE, FAILED)
                                   .getResponse();
+    
+    String checkQuery = "";
+    var isParent = new Object() {
+      boolean value = false;
+    };
 
-    String checkQuery = TERM_COMPLEX_QUERY.replace("$1", id).replace("$2", "");
+    if (id.split("/").length < 5) {
+      isParent.value = true;
+      checkQuery = QUERY_RESOURCE_GRP.replace("$1", id).replace("$2", id);
+    } else {
+      checkQuery = GET_DOC_QUERY.replace("$1", id).replace("$2", "");
+    }
 
     client.searchGetId(CAT_INDEX_NAME, checkQuery, checkRes -> {
       if (checkRes.failed()) {
@@ -259,28 +268,36 @@ public class DatabaseServiceImpl implements DatabaseService {
 
       if (checkRes.succeeded()) {
         LOGGER.debug("Success: Check index for doc");
-        if (checkRes.result().getInteger(TOTAL_HITS) != 1) {
+        if (checkRes.result().getInteger(TOTAL_HITS) > 1 && isParent.value == true) {
+          LOGGER.error("Fail: Can't delete, parent doc has associated item;");
+          handler.handle(Future.succeededFuture(
+              respBuilder.withStatus(ERROR)
+                         .withResult(id, DELETE, FAILED,
+                           "Fail: Can't delete, resourceGroup has associated item")
+                         .getJsonResponse()));
+          return;
+        } else if (checkRes.result().getInteger(TOTAL_HITS) != 1) {
           LOGGER.error("Fail: Doc doesn't exist, can't delete;");
           handler.handle(Future.succeededFuture(
-                respBuilder.withStatus(ERROR)
-                           .withResult(id, DELETE, FAILED,"Fail: Doc doesn't exist, can't delete")
-                           .getJsonResponse()));
+              respBuilder.withStatus(ERROR)
+                         .withResult(id, DELETE, FAILED, "Fail: Doc doesn't exist, can't delete")
+                         .getJsonResponse()));
           return;
         }
-
-        String docId = checkRes.result().getJsonArray(RESULTS).getString(0);
-        client.docDelAsync(CAT_INDEX_NAME, docId, delRes -> {
-          if (delRes.succeeded()) {
-            handler.handle(Future.succeededFuture(
-                respBuilder.withStatus(SUCCESS)
-                            .withResult(id, DELETE, SUCCESS)
-                            .getJsonResponse()));
-          } else {
-            handler.handle(Future.failedFuture(errorJson));
-            LOGGER.error("Fail: Deletion failed;" + delRes.cause().getMessage());
-          }
-        });
       }
+
+      String docId = checkRes.result().getJsonArray(RESULTS).getString(0);
+      client.docDelAsync(CAT_INDEX_NAME, docId, delRes -> {
+        if (delRes.succeeded()) {
+          handler.handle(Future.succeededFuture(
+              respBuilder.withStatus(SUCCESS)
+                         .withResult(id, DELETE, SUCCESS)
+                         .getJsonResponse()));
+        } else {
+          handler.handle(Future.failedFuture(errorJson));
+          LOGGER.error("Fail: Deletion failed;" + delRes.cause().getMessage());
+        }
+      });
     });
     return this;
   }
@@ -295,7 +312,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     RespBuilder respBuilder = new RespBuilder();
     String itemId = request.getString(ID);
-    String getQuery = TERM_COMPLEX_QUERY.replace("$1", itemId).replace("$2", "");
+    String getQuery = GET_DOC_QUERY.replace("$1", itemId).replace("$2", "");
 
     client.searchAsync(CAT_INDEX_NAME, getQuery, clientHandler -> {
       if (clientHandler.succeeded()) {
@@ -508,7 +525,7 @@ public class DatabaseServiceImpl implements DatabaseService {
       return promise.future();
     }
 
-    String checkInstance = TERM_COMPLEX_QUERY.replace("$1", instanceId).replace("$2", "");
+    String checkInstance = GET_DOC_QUERY.replace("$1", instanceId).replace("$2", "");
     client.searchAsync(CAT_INDEX_NAME, checkInstance, checkRes -> {
       if (checkRes.failed()) {
         LOGGER.error(ERROR_DB_REQUEST + checkRes.cause().getMessage());
